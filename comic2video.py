@@ -152,15 +152,18 @@ def cover(img, w, h, zoom=1.0, ay=0.5):
     return img.crop((l, t, l + w, t + h))
 
 
-def make_frame(slide_path, overlay, opacity, out_png, blend="multiply", zoom=1.0, ay=0.5, blur=0):
+def make_frame(slide_path, overlay, opacity, out_png, blend="multiply", zoom=1.0, ay=0.5, blur=0,
+               page_scale=1.0, page_stretch=1.0):
     src = Image.open(slide_path).convert("RGB")
     if blend == "multiply" and overlay is not None:  # фон цвета бумаги, чтобы фото шло по всему кадру ровно
         bg = Image.new("RGB", (W, H), src.getpixel((2, 2)))
     else:
         bg = cover(src, W, H).filter(ImageFilter.GaussianBlur(40))
         bg = Image.eval(bg, lambda v: int(v * 0.5))
-    s = min(W / src.width, H / src.height)
-    fg = src.resize((round(src.width * s), round(src.height * s)), Image.LANCZOS)
+    # page_scale: размер страницы (1 = целиком влезает в кадр, больше — края обрезаются);
+    # page_stretch: растяжение по ширине (1 = без искажений)
+    s = min(W / src.width, H / src.height) * page_scale
+    fg = src.resize((round(src.width * s * page_stretch), round(src.height * s)), Image.LANCZOS)
     bg.paste(fg, ((W - fg.width) // 2, (H - fg.height) // 2))
     if overlay is not None:
         ov = cover(overlay, W, H, zoom, ay)
@@ -188,6 +191,9 @@ def main():
     ap.add_argument("--overlay-zoom", type=float, default=1.0, help="приблизить оверлей (1.3 = на 30%% крупнее)")
     ap.add_argument("--overlay-anchor", type=float, default=0.5, help="какая часть оверлея остаётся в кадре при зуме: 0 = верх, 1 = низ")
     ap.add_argument("--overlay-blur", type=float, default=0, help="размытие оверлея, px")
+    ap.add_argument("--page-scale", type=float, default=1.0,
+                    help="размер страницы: 1 = целиком в кадре, 1.3 = на 30%% крупнее (края обрежутся)")
+    ap.add_argument("--page-stretch", type=float, default=1.0, help="растянуть страницу по ширине: 1.5 = в 1,5 раза шире")
     ap.add_argument("--out", default="video.mp4")
     ap.add_argument("--work", default=os.path.join(HERE, "work"), help="папка для промежуточных файлов")
     ap.add_argument("--order", choices=["manga", "ltr"], default="manga",
@@ -214,7 +220,8 @@ def main():
 
     if a.preview:
         p = os.path.join(a.work, "preview.png")
-        make_frame(os.path.join(a.images, files[0]), overlay, a.opacity, p, a.blend, a.overlay_zoom, a.overlay_anchor, a.overlay_blur)
+        make_frame(os.path.join(a.images, files[0]), overlay, a.opacity, p, a.blend, a.overlay_zoom, a.overlay_anchor, a.overlay_blur,
+                   a.page_scale, a.page_stretch)
         print("Готово:", p)
         return
 
@@ -266,7 +273,8 @@ def main():
 
     # 3. кадры
     frame_list = []
-    ov_sig = "%s|%s|%s|%s|%s|%s" % (a.overlay, a.opacity, a.blend, a.overlay_zoom, a.overlay_anchor, a.overlay_blur)
+    ov_sig = "%s|%s|%s|%s|%s|%s|%s|%s" % (a.overlay, a.opacity, a.blend, a.overlay_zoom, a.overlay_anchor,
+                                         a.overlay_blur, a.page_scale, a.page_stretch)
     ov_stamp = os.path.join(a.work, "frames", "overlay.sig")
     if not (os.path.exists(ov_stamp) and open(ov_stamp).read() == ov_sig):
         for x in os.listdir(os.path.join(a.work, "frames")):
@@ -277,7 +285,8 @@ def main():
         p = os.path.join(a.work, "frames", "%04d.png" % i)
         if not os.path.exists(p):
             print("Кадр %d/%d" % (i + 1, len(files)))
-            make_frame(os.path.join(a.images, f), overlay, a.opacity, p, a.blend, a.overlay_zoom, a.overlay_anchor, a.overlay_blur)
+            make_frame(os.path.join(a.images, f), overlay, a.opacity, p, a.blend, a.overlay_zoom, a.overlay_anchor, a.overlay_blur,
+                   a.page_scale, a.page_stretch)
         frame_list.append(p)
 
     # 4. сборка
