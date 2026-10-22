@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comic Video</title>
+<style>
+  :root { --bg:#f5f4f0; --card:#fff; --text:#1d1d1f; --muted:#6e6e73; --line:#e3e1db; --accent:#2f6fed; --ok:#1f9d55; --err:#d33; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#151517; --card:#1f1f22; --text:#f2f2f2; --muted:#9a9aa0; --line:#333338; --accent:#5b8cff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Sans", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:22px; text-align:center; color:var(--muted); cursor:pointer; transition:.15s; }
+  .drop.over { border-color:var(--accent); color:var(--accent); }
+  .drop input { display:none; }
+  .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .thumbs div { position:relative; width:84px; }
+  .thumbs img { width:84px; height:110px; object-fit:cover; border-radius:6px; border:1px solid var(--line); background:#fff; }
+  .thumbs .pdf { width:84px; height:110px; border-radius:6px; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; font-weight:600; }
+  .thumbs span { display:block; font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
+  .single img { max-width:100%; max-height:120px; border-radius:6px; margin-top:10px; }
+  .single .fname { margin-top:8px; color:var(--muted); font-size:13px; }
+  label.f { display:grid; grid-template-columns: 170px 1fr 52px; align-items:center; gap:10px; margin:8px 0; }
+  @media (max-width: 700px) { label.f { grid-template-columns: 1fr 52px; } label.f > span:first-child { grid-column: 1 / -1; } }
+  label.f output { text-align:right; color:var(--muted); font-variant-numeric: tabular-nums; }
+  select, input[type=text] { width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); font:inherit; }
+  button { font:inherit; border:0; border-radius:10px; padding:10px 18px; cursor:pointer; background:var(--line); color:var(--text); }
+  button.primary { background:var(--accent); color:#fff; font-weight:600; font-size:16px; padding:12px 26px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .bar { height:8px; border-radius:4px; background:var(--line); overflow:hidden; margin:12px 0; }
+  .bar i { display:block; height:100%; width:0; background:var(--accent); transition:width .4s; }
+  pre { background:var(--bg); border-radius:8px; padding:10px; max-height:180px; overflow:auto; font-size:12px; margin:0; white-space:pre-wrap; }
+  textarea { width:100%; min-height:300px; font:14px/1.6 "Hiragino Sans", monospace; padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  .hint { color:var(--muted); font-size:13px; }
+  .done { color:var(--ok); font-weight:600; }
+  .err { color:var(--err); font-weight:600; }
+  #preview img { max-width:100%; border-radius:8px; margin-top:12px; }
+  .hidden { display:none; }
+  .check { display:flex; gap:8px; align-items:center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Comic Video</h1>
+  <p class="sub">Страницы → японская озвучка → готовое видео 1920×1080. Работает только на этом Mac.</p>
+
+  <div class="card">
+    <h2>1. Страницы с текстом</h2>
+    <div class="drop" id="dropSlides">Перетащите сюда картинки (PNG, JPG, WebP) или PDF — или нажмите, чтобы выбрать
+      <input type="file" id="inSlides" multiple accept="image/*,.pdf">
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="actions" style="margin-top:10px"><span class="hint" id="slideCount">Порядок — по имени файлов.</span>
+      <button id="clearSlides" class="hidden">Очистить</button></div>
+  </div>
+
+  <div class="row">
+    <div class="card single">
+      <h2>2. Фото на фон</h2>
+      <div class="drop" id="dropOverlay">Перетащите фото<input type="file" id="inOverlay" accept="image/*"></div>
+      <div id="overlayInfo"></div>
+    </div>
+    <div class="card single">
+      <h2>3. Музыка</h2>
+      <div class="drop" id="dropMusic">Перетащите трек (mp3, wav, m4a)<input type="file" id="inMusic" accept="audio/*"></div>
+      <div id="musicInfo"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>4. Настройки</h2>
+    <label class="f"><span>Голос</span><select id="voice"></select><span></span></label>
+    <label class="f"><span>Текст на страницах</span><select id="order">
+      <option value="ltr">Горизонтальный (слева направо)</option>
+      <option value="manga">Манга (вертикальный, справа налево)</option></select><span></span></label>
+    <label class="f"><span>Сила фото</span><input type="range" id="opacity" min="0" max="1" step="0.05" value="0.5"><output></output></label>
+    <label class="f"><span>Приближение фото</span><input type="range" id="zoom" min="1" max="2.5" step="0.1" value="1.4"><output></output></label>
+    <label class="f"><span>Размытие фото</span><input type="range" id="blur" min="0" max="20" step="1" value="5"><output></output></label>
+    <label class="f"><span>Громкость музыки</span><input type="range" id="music_volume" min="0" max="0.5" step="0.01" value="0.08"><output></output></label>
+    <label class="f"><span>Скорость речи</span><input type="range" id="speed" min="0.7" max="1.5" step="0.05" value="1"><output></output></label>
+    <label class="f"><span>Пауза после слайда, с</span><input type="range" id="pad" min="0" max="3" step="0.1" value="0.6"><output></output></label>
+    <label class="f"><span>Название видео</span><input type="text" id="name" value="video"><span></span></label>
+    <div class="actions" style="margin-top:12px">
+      <button id="btnPreview">Показать кадр</button>
+      <span class="hint">Проверить, как фото сливается со страницей</span>
+    </div>
+    <div id="preview"></div>
+  </div>
+
+  <div class="card">
+    <h2>5. Собрать</h2>
+    <div class="actions">
+      <button class="primary" id="btnStart">Собрать видео</button>
+      <label class="check"><input type="checkbox" id="review"> Сначала проверить распознанный текст</label>
+    </div>
+    <div id="progressBox" class="hidden">
+      <div class="bar"><i id="bar"></i></div>
+      <div id="statusText" class="hint"></div>
+      <pre id="log"></pre>
+    </div>
+    <div id="reviewBox" class="hidden" style="margin-top:14px">
+      <p class="hint">Поправьте ошибки распознавания. Текст под каждым [файлом] — то, что будет озвучено. Пустой текст = слайд без озвучки.</p>
+      <textarea id="script"></textarea>
+      <div class="actions" style="margin-top:10px"><button class="primary" id="btnContinue">Озвучить и собрать</button></div>
+    </div>
+    <div id="doneBox" class="hidden" style="margin-top:14px">
+      <p class="done">Готово!</p>
+      <p class="hint" id="outPath"></p>
+      <button id="btnReveal">Показать в Finder</button>
+    </div>
+  </div>
+
+  <div class="actions"><button id="btnQuit">Закрыть программу</button>
+    <span class="hint">Видео сохраняются в папку «Фильмы → ComicVideo».</span></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let job = null, slideIdx = 0, uploading = 0, pollTimer = null, outPath = null;
+
+const natural = (a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: "base"});
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+};
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {method: "POST"} : {method: "POST", body: typeof body === "string" ? body : JSON.stringify(body)});
+  return r.json();
+}
+
+async function newJob() { job = (await api("/api/new")).job; slideIdx = 0; }
+
+async function upload(kind, file, idx) {
+  uploading++; refreshButtons();
+  const q = new URLSearchParams({job, kind, name: file.name, idx: idx ?? 0});
+  try { await fetch("/api/upload?" + q, {method: "POST", body: file}); }
+  finally { uploading--; refreshButtons(); }
+}
+
+function setupDrop(dropId, inputId, handler) {
+  const d = $(dropId), inp = $(inputId);
+  d.addEventListener("click", () => inp.click());
+  inp.addEventListener("change", () => { handler([...inp.files]); inp.value = ""; });
+  d.addEventListener("dragover", e => { e.preventDefault(); d.classList.add("over"); });
+  d.addEventListener("dragleave", () => d.classList.remove("over"));
+  d.addEventListener("drop", e => { e.preventDefault(); d.classList.remove("over"); handler([...e.dataTransfer.files]); });
+}
+
+let slideNames = [];
+setupDrop("dropSlides", "inSlides", async files => {
+  files = files.filter(f => f.type.startsWith("image/") || f.name.toLowerCase().endsWith(".pdf")).sort((a, b) => natural(a.name, b.name));
+  for (const f of files) {
+    const idx = ++slideIdx;
+    slideNames.push(f.name);
+    const box = document.createElement("div");
+    if (f.type.startsWith("image/")) {
+      const img = document.createElement("img"); img.src = URL.createObjectURL(f); box.appendChild(img);
+    } else {
+      const p = document.createElement("div"); p.className = "pdf"; p.textContent = "PDF"; box.appendChild(p);
+    }
+    const s = document.createElement("span"); s.textContent = f.name; box.appendChild(s);
+    $("thumbs").appendChild(box);
+    await upload("slide", f, idx);
+  }
+  $("slideCount").textContent = "Файлов: " + slideNames.length + ". Порядок — по имени файлов.";
+  $("clearSlides").classList.toggle("hidden", !slideNames.length);
+});
+
+$("clearSlides").onclick = async () => {
+  await newJob(); slideNames = []; $("thumbs").innerHTML = "";
+  $("slideCount").textContent = "Порядок — по имени файлов."; $("clearSlides").classList.add("hidden");
+  // фото и музыку переносим в новое задание
+  if (overlayFile) await upload("overlay", overlayFile);
+  if (musicFile) await upload("music", musicFile);
+};
+
+let overlayFile = null, musicFile = null;
+setupDrop("dropOverlay", "inOverlay", async files => {
+  const f = files.find(f => f.type.startsWith("image/")); if (!f) return;
+  overlayFile = f;
+  $("overlayInfo").innerHTML = "";
+  const img = document.createElement("img"); img.src = URL.createObjectURL(f); $("overlayInfo").appendChild(img);
+  const n = document.createElement("div"); n.className = "fname"; n.textContent = f.name; $("overlayInfo").appendChild(n);
+  await upload("overlay", f);
+});
+setupDrop("dropMusic", "inMusic", async files => {
+  const f = files.find(f => f.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name)); if (!f) return;
+  musicFile = f;
+  $("musicInfo").innerHTML = "";
+  const a = document.createElement("audio"); a.controls = true; a.src = URL.createObjectURL(f); a.style.width = "100%"; a.style.marginTop = "10px";
+  $("musicInfo").appendChild(a);
+  const n = document.createElement("div"); n.className = "fname"; n.textContent = f.name; $("musicInfo").appendChild(n);
+  await upload("music", f);
+});
+
+const sliders = ["opacity", "zoom", "blur", "music_volume", "speed", "pad"];
+for (const id of sliders) {
+  const el = $(id), out = el.parentElement.querySelector("output");
+  const saved = store.get("cv_" + id); if (saved !== null) el.value = saved;
+  const show = () => { out.textContent = id === "music_volume" ? Math.round(el.value * 100) + "%" : el.value; store.set("cv_" + id, el.value); };
+  el.addEventListener("input", show); show();
+}
+for (const id of ["order", "name"]) {
+  const saved = store.get("cv_" + id); if (saved !== null) $(id).value = saved;
+  $(id).addEventListener("change", () => store.set("cv_" + id, $(id).value));
+}
+
+async function loadVoices() {
+  const list = await (await fetch("/api/speakers")).json();
+  const sel = $("voice");
+  const g1 = document.createElement("optgroup"); g1.label = "VOICEVOX";
+  for (const s of list) { const o = document.createElement("option"); o.value = "vv:" + s.id; o.textContent = s.name; g1.appendChild(o); }
+  const g2 = document.createElement("optgroup"); g2.label = "Голос macOS (хуже, без VOICEVOX)";
+  for (const v of ["Kyoko", "Flo", "Sandy", "Shelley"]) { const o = document.createElement("option"); o.value = "say:" + v; o.textContent = v; g2.appendChild(o); }
+  sel.append(g1, g2);
+  const saved = store.get("cv_voice"); if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+  sel.addEventListener("change", () => store.set("cv_voice", sel.value));
+}
+
+function params() {
+  const p = {voice: $("voice").value, order: $("order").value, name: $("name").value};
+  for (const id of sliders) p[id] = parseFloat($(id).value);
+  return p;
+}
+
+function refreshButtons() {
+  const busy = uploading > 0;
+  $("btnStart").disabled = busy || !slideNames.length;
+  $("btnPreview").disabled = busy || !slideNames.length;
+  $("btnStart").textContent = busy ? "Загрузка файлов…" : "Собрать видео";
+}
+
+$("btnPreview").onclick = async () => {
+  $("btnPreview").disabled = true; $("btnPreview").textContent = "Рисую…";
+  const r = await api("/api/preview", {job, params: params()});
+  $("btnPreview").disabled = false; $("btnPreview").textContent = "Показать кадр";
+  $("preview").innerHTML = "";
+  if (r.ok) { const img = document.createElement("img"); img.src = "/api/preview.png?job=" + job + "&t=" + Date.now(); $("preview").appendChild(img); }
+  else { const p = document.createElement("pre"); p.textContent = r.log || r.error; $("preview").appendChild(p); }
+};
+
+$("btnStart").onclick = async () => {
+  $("reviewBox").classList.add("hidden"); $("doneBox").classList.add("hidden");
+  await api("/api/start", {job, params: params(), review: $("review").checked});
+  startPolling();
+};
+
+$("btnContinue").onclick = async () => {
+  $("reviewBox").classList.add("hidden");
+  await api("/api/continue", {job, params: params(), script: $("script").value});
+  startPolling();
+};
+
+function startPolling() {
+  $("progressBox").classList.remove("hidden");
+  $("btnStart").disabled = true;
+  clearInterval(pollTimer);
+  pollTimer = setInterval(poll, 700); poll();
+}
+
+const STAGE = {ocr: "Распознаю текст…", all: "Озвучиваю и собираю видео…"};
+async function poll() {
+  const st = await (await fetch("/api/status?job=" + job)).json();
+  $("bar").style.width = Math.round((st.progress || 0) * 100) + "%";
+  $("log").textContent = (st.log || []).slice(-40).join("\n");
+  $("log").scrollTop = $("log").scrollHeight;
+  if (st.state === "running") {
+    const last = (st.log || []).slice(-1)[0] || "";
+    $("statusText").textContent = last.startsWith("VOICEVOX") ? "Запускаю VOICEVOX…" : (STAGE[st.stage] || "");
+    $("statusText").className = "hint";
+    return;
+  }
+  clearInterval(pollTimer); refreshButtons();
+  if (st.state === "review") {
+    $("statusText").textContent = "Текст распознан — проверьте его ниже.";
+    $("script").value = st.script; $("reviewBox").classList.remove("hidden");
+  } else if (st.state === "done") {
+    $("statusText").textContent = ""; outPath = st.output;
+    $("outPath").textContent = st.output; $("doneBox").classList.remove("hidden");
+  } else if (st.state === "error") {
+    $("statusText").textContent = "Ошибка — подробности в журнале выше."; $("statusText").className = "err";
+  }
+}
+
+$("btnReveal").onclick = () => api("/api/reveal", {path: outPath});
+$("btnQuit").onclick = async () => { await api("/api/quit"); document.body.innerHTML = "<main><h1>Программа закрыта</h1><p class='sub'>Это окно можно закрыть.</p></main>"; };
+
+(async () => { await newJob(); await loadVoices(); refreshButtons(); })();
+</script>
+</body>
+</html>

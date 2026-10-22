@@ -1,0 +1,9 @@
+Comic Video.app/
+ocr
+pdf2png
+work/
+work_pages/
+test/
+*.mp4
+__pycache__/
+.DS_Store
