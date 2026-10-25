@@ -106,7 +106,7 @@ def build_args(job, p, extra):
             "--opacity", str(p.get("opacity", 0.5)), "--blend", "multiply",
             "--overlay-zoom", str(p.get("zoom", 1.4)), "--overlay-anchor", "0.15",
             "--overlay-blur", str(p.get("blur", 5)),
-            "--page-scale", str(p.get("page_scale", 1.0)), "--page-stretch", str(p.get("page_stretch", 1.0)),
+            "--page-scale", str(p.get("page_scale", 1.0)), "--page-stretch", str(p.get("page_stretch", 1.0)), "--page-opacity", str(p.get("page_opacity", 1.0)),
             "--music-volume", str(p.get("music_volume", 0.08)),
             "--speed", str(p.get("speed", 1.0)), "--pad", str(p.get("pad", 0.6))]
     voice = str(p.get("voice", "vv:8"))
