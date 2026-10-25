@@ -20,6 +20,7 @@ import urllib.request
 from PIL import Image, ImageChops, ImageFilter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+MANGA_PY = os.path.expanduser("~/Library/Application Support/ComicVideo/manga-ocr-venv/bin/python")
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
 W, H = 1920, 1080
 
@@ -75,6 +76,34 @@ def ocr_image(path, mode):
             text += "、"
         text += line
     return text
+
+
+class MangaReader:
+    """Держит запущенным manga_worker.py (модель грузится один раз на всю сборку)."""
+
+    def __init__(self):
+        print("Загружаю модель manga-ocr...")
+        self.p = subprocess.Popen([MANGA_PY, os.path.join(HERE, "manga_worker.py")], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        if "ready" not in json.loads(self.p.stdout.readline() or "{}"):
+            raise RuntimeError("manga-ocr не запустился")
+
+    def read(self, path):
+        self.p.stdin.write(json.dumps({"image": os.path.abspath(path)}) + "\n")
+        res = json.loads(self.p.stdout.readline())
+        if "error" in res:
+            raise RuntimeError(res["error"])
+        parts = []
+        for b in res["bubbles"]:
+            t = b["text"].replace("．．．", "…").replace("...", "…")
+            if not t.endswith(("。", "！", "？", "…", "!", "?", "」", "』", "～", "ー")):
+                t += "。"  # пауза между пузырями
+            parts.append(t)
+        return "".join(parts)
+
+    def close(self):
+        self.p.stdin.close()
+        self.p.wait()
 
 
 def write_script(path, items):
@@ -198,6 +227,9 @@ def main():
     ap.add_argument("--work", default=os.path.join(HERE, "work"), help="папка для промежуточных файлов")
     ap.add_argument("--order", choices=["manga", "ltr"], default="manga",
                     help="порядок реплик при OCR: manga = справа налево, ltr = слева направо")
+    ap.add_argument("--ocr-engine", choices=["auto", "manga", "vision"], default="auto",
+                    help="manga = пузыри + manga-ocr (для комиксов), vision = Apple Vision (для обычного текста), "
+                         "auto = manga-ocr, если установлен")
     ap.add_argument("--tts", choices=["voicevox", "say"], default="voicevox")
     ap.add_argument("--speaker", type=int, default=8, help="VOICEVOX speaker id (8 = 春日部つむぎ)")
     ap.add_argument("--voicevox-url", default="http://127.0.0.1:50021")
@@ -231,9 +263,18 @@ def main():
     if texts:
         print("Использую существующий %s (удалите его, чтобы распознать заново)" % script_path)
     todo = [f for f in files if f not in texts]  # распознаём только новые страницы
+    use_manga = todo and (a.ocr_engine == "manga" or (a.ocr_engine == "auto" and os.path.exists(MANGA_PY)))
+    if a.ocr_engine == "manga" and not os.path.exists(MANGA_PY):
+        sys.exit("manga-ocr не установлен. Запустите ./install.sh из папки программы.")
+    reader = MangaReader() if use_manga else None
     for i, f in enumerate(todo, 1):
         print("OCR %d/%d %s" % (i, len(todo), f))
-        texts[f] = ocr_image(os.path.join(a.images, f), a.order)
+        path = os.path.join(a.images, f)
+        texts[f] = reader.read(path) if reader else ""
+        if not texts[f]:  # пузырей нет (обычная страница с текстом) — Apple Vision
+            texts[f] = ocr_image(path, "ltr" if reader else a.order)  # Vision читает только горизонтальный
+    if reader:
+        reader.close()
     if todo or not os.path.exists(script_path):
         write_script(script_path, [(f, texts.get(f, "")) for f in files])
         print("Текст сохранён в", script_path)

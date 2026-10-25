@@ -79,9 +79,9 @@
   <div class="card">
     <h2>4. Настройки</h2>
     <label class="f"><span>Голос</span><select id="voice"></select><span></span></label>
-    <label class="f"><span>Текст на страницах</span><select id="order">
-      <option value="ltr">Горизонтальный (слева направо)</option>
-      <option value="manga">Манга (вертикальный, справа налево)</option></select><span></span></label>
+    <label class="f"><span>Тип страниц</span><select id="order">
+      <option value="manga">Комикс / манга (текст в пузырях)</option>
+      <option value="ltr">Обычный текст, как в документе</option></select><span></span></label>
     <label class="f"><span>Размер страницы</span><input type="range" id="page_scale" min="0.5" max="2" step="0.05" value="1"><output></output></label>
     <label class="f"><span>Растянуть по ширине</span><input type="range" id="page_stretch" min="1" max="2.5" step="0.05" value="1"><output></output></label>
     <label class="f"><span>Сила фото</span><input type="range" id="opacity" min="0" max="1" step="0.05" value="0.5"><output></output></label>
@@ -249,7 +249,8 @@ async function loadVoices() {
 }
 
 function params() {
-  const p = {voice: $("voice").value, order: $("order").value, name: $("name").value};
+  const p = {voice: $("voice").value, order: $("order").value, name: $("name").value,
+             ocr_engine: $("order").value === "manga" ? "auto" : "vision"};
   for (const id of sliders) p[id] = parseFloat($(id).value);
   return p;
 }

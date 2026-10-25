@@ -33,6 +33,20 @@ if ! command -v ffmpeg >/dev/null; then
 fi
 echo "ок, $(ffmpeg -version | head -1)"
 
+say_step "Распознавание манги (manga-ocr: около 2–3 ГБ, скачивается один раз)"
+V="$HOME/Library/Application Support/ComicVideo/manga-ocr-venv"
+if [ "$1" = "--no-manga-ocr" ]; then
+  echo "пропущено (--no-manga-ocr): комиксы с вертикальным текстом распознаваться не будут"
+else
+  if ! "$V/bin/python" -c "import manga_ocr, cv2" >/dev/null 2>&1; then
+    /usr/bin/python3 -m venv "$V"
+    "$V/bin/python" -m pip install --quiet --upgrade pip
+    "$V/bin/python" -m pip install --quiet manga-ocr opencv-python-headless
+  fi
+  "$V/bin/python" -c "from manga_ocr import MangaOcr; MangaOcr()" >/dev/null 2>&1  # скачивает модель
+  echo "ок"
+fi
+
 say_step "Сборка Comic Video.app"
 ./build_app.sh
 

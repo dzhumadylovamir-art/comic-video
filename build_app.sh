@@ -7,7 +7,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swiftc -O ocr.swift -o ocr
 swiftc -O pdf2png.swift -o pdf2png
-cp app.py comic2video.py index.html ocr pdf2png "$APP/Contents/Resources/"
+cp app.py comic2video.py manga_worker.py index.html ocr pdf2png "$APP/Contents/Resources/"
 cat > "$APP/Contents/MacOS/ComicVideo" <<'SH'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")/../Resources" && pwd)"

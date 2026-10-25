@@ -102,7 +102,7 @@ def build_args(job, p, extra):
     files = os.listdir(d)
     args = [sys.executable, "-u", os.path.join(HERE, "comic2video.py"),
             "--images", os.path.join(d, "slides"), "--work", os.path.join(d, "work"),
-            "--order", p.get("order", "manga"),
+            "--order", p.get("order", "manga"), "--ocr-engine", p.get("ocr_engine", "auto"),
             "--opacity", str(p.get("opacity", 0.5)), "--blend", "multiply",
             "--overlay-zoom", str(p.get("zoom", 1.4)), "--overlay-anchor", "0.15",
             "--overlay-blur", str(p.get("blur", 5)),
