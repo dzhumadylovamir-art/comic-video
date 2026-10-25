@@ -34,11 +34,57 @@ def job_dir(job):
     return os.path.join(JOBS, job)
 
 
+LAST = os.path.join(os.path.dirname(JOBS), "last.json")  # последнее собранное видео (для «продолжить»)
+
+
+def read_last():
+    try:
+        last = json.load(open(LAST, encoding="utf-8"))
+        return last if os.path.isdir(job_dir(last["job"])) else None
+    except Exception:
+        return None
+
+
+def unique_out(name):
+    """video.mp4 занято -> video2.mp4; video3 занято -> video4 и т.д."""
+    m = re.match(r"^(.*?)(\d+)$", name)
+    base, n = (m.group(1), int(m.group(2))) if m else (name, 1)
+    cand = name
+    while os.path.exists(os.path.join(OUT_DIR, cand + ".mp4")):
+        n += 1
+        cand = "%s%d" % (base, n)
+    return os.path.join(OUT_DIR, cand + ".mp4")
+
+
+def next_idx(d):
+    nums = [int(f.split("_", 1)[0]) for f in os.listdir(os.path.join(d, "slides")) if f.split("_", 1)[0].isdigit()]
+    return max(nums, default=0) + 1
+
+
+def merge_into(src, dst):
+    """Переносит новые страницы (и фото/музыку, если загружены) из задания src в конец задания dst."""
+    s, d = job_dir(src), job_dir(dst)
+    for f in sorted(os.listdir(os.path.join(s, "slides"))):
+        shutil.move(os.path.join(s, "slides", f), os.path.join(d, "slides", "%04d_%s" % (next_idx(d), f.split("_", 1)[1])))
+    for kind in ("overlay", "music"):
+        new = [f for f in os.listdir(s) if f.startswith(kind + ".")]
+        if new:
+            for f in os.listdir(d):
+                if f.startswith(kind + "."):
+                    os.remove(os.path.join(d, f))
+            shutil.move(os.path.join(s, new[0]), os.path.join(d, new[0]))
+    shutil.rmtree(s, ignore_errors=True)
+    STATE.pop(src, None)
+
+
 def cleanup_old():
     if not os.path.isdir(JOBS):
         return
+    last = read_last()
     for d in os.listdir(JOBS):
         p = os.path.join(JOBS, d)
+        if last and d == last["job"]:
+            continue
         if time.time() - os.path.getmtime(p) > 7 * 86400:
             shutil.rmtree(p, ignore_errors=True)
 
@@ -80,7 +126,8 @@ def run_job(job, p, phase):
     d = job_dir(job)
     os.makedirs(OUT_DIR, exist_ok=True)
     name = re.sub(r"[^\w\-. ]", "_", p.get("name") or "video").strip() or "video"
-    out = os.path.join(OUT_DIR, name + ".mp4")
+    # при продолжении перезаписываем предыдущее видео, иначе берём свободное имя
+    out = st.get("append_out") or unique_out(name)
     extra = ["--ocr-only"] if phase == "ocr" else ["--out", out]
     with LOCK:
         st.update(state="running", stage=phase, log=[], progress=0.0, output=None, params=p)
@@ -113,6 +160,9 @@ def run_job(job, p, phase):
             st["state"] = "review"
         else:
             st.update(state="done", output=out, progress=1.0)
+            slides = len(os.listdir(os.path.join(d, "slides")))
+            with open(LAST, "w", encoding="utf-8") as f:
+                json.dump({"job": job, "output": out, "slides": slides}, f, ensure_ascii=False)
 
 
 class H(BaseHTTPRequestHandler):
@@ -141,6 +191,12 @@ class H(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(b)))
                 self.end_headers()
                 self.wfile.write(b)
+            elif u.path == "/api/last":
+                last = read_last()
+                if last:
+                    last["name"] = os.path.basename(last["output"])
+                    last["exists"] = os.path.exists(last["output"])
+                self.send_json(last or {})
             elif u.path == "/api/speakers":
                 self.send_json(speakers())
             elif u.path == "/api/status":
@@ -173,7 +229,7 @@ class H(BaseHTTPRequestHandler):
                 ext = os.path.splitext(name)[1].lower()
                 data, d = self.body(), job_dir(job)
                 if kind == "slide":
-                    idx = int(q["idx"][0])
+                    idx = next_idx(d)  # страницы идут в порядке загрузки
                     if ext == ".pdf":
                         tmp = os.path.join(d, "pdf_%d" % idx)
                         os.makedirs(tmp, exist_ok=True)
@@ -203,12 +259,21 @@ class H(BaseHTTPRequestHandler):
                 job = req["job"]
                 if STATE.get(job, {}).get("state") == "running":
                     return self.send_json({"ok": False})
-                d = job_dir(job)
-                shutil.rmtree(os.path.join(d, "work"), ignore_errors=True)
-                STATE[job] = {"state": "running", "log": [], "progress": 0}
+                append_out = None
+                if req.get("append"):
+                    last = read_last()
+                    if not last:
+                        return self.send_json({"ok": False, "error": "Предыдущее видео не найдено"})
+                    if last["job"] != job:
+                        merge_into(job, last["job"])
+                        job = last["job"]
+                    append_out = last["output"]
+                else:
+                    shutil.rmtree(os.path.join(job_dir(job), "work"), ignore_errors=True)
+                STATE[job] = {"state": "running", "log": [], "progress": 0, "append_out": append_out}
                 phase = "ocr" if req.get("review") else "all"
                 threading.Thread(target=run_job, args=(job, req["params"], phase), daemon=True).start()
-                self.send_json({"ok": True})
+                self.send_json({"ok": True, "job": job})
             elif u.path == "/api/continue":
                 req = json.loads(self.body())
                 job = req["job"]

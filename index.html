@@ -104,6 +104,9 @@
       <button class="primary" id="btnStart">Собрать видео</button>
       <label class="check"><input type="checkbox" id="review"> Сначала проверить распознанный текст</label>
     </div>
+    <label class="check hidden" id="appendWrap" style="margin-top:12px"><input type="checkbox" id="append">
+      <span>Продолжить предыдущее видео <span class="hint" id="lastInfo"></span></span></label>
+    <p class="hint hidden" id="appendHint" style="margin:6px 0 0">Новые страницы добавятся в конец, музыка продолжится без перерыва. Предыдущее видео будет заменено удлинённой версией.</p>
     <div id="progressBox" class="hidden">
       <div class="bar"><i id="bar"></i></div>
       <div id="statusText" class="hint"></div>
@@ -178,13 +181,29 @@ setupDrop("dropSlides", "inSlides", async files => {
   $("clearSlides").classList.toggle("hidden", !slideNames.length);
 });
 
-$("clearSlides").onclick = async () => {
+async function resetSlides() {
   await newJob(); slideNames = []; $("thumbs").innerHTML = "";
   $("slideCount").textContent = "Порядок — по имени файлов."; $("clearSlides").classList.add("hidden");
   // фото и музыку переносим в новое задание
   if (overlayFile) await upload("overlay", overlayFile);
   if (musicFile) await upload("music", musicFile);
-};
+  refreshButtons();
+}
+$("clearSlides").onclick = resetSlides;
+
+async function loadLast() {
+  const last = await (await fetch("/api/last")).json();
+  $("appendWrap").classList.toggle("hidden", !last.job);
+  if (!last.job) { $("append").checked = false; onAppendChange(); return; }
+  $("lastInfo").textContent = "(" + last.name + ", страниц: " + last.slides + (last.exists ? "" : ", файл удалён — соберётся заново") + ")";
+}
+function onAppendChange() {
+  const on = $("append").checked;
+  $("appendHint").classList.toggle("hidden", !on);
+  $("name").disabled = on;
+  refreshButtons();
+}
+$("append").addEventListener("change", onAppendChange);
 
 let overlayFile = null, musicFile = null;
 setupDrop("dropOverlay", "inOverlay", async files => {
@@ -237,7 +256,7 @@ function params() {
 
 function refreshButtons() {
   const busy = uploading > 0;
-  $("btnStart").disabled = busy || !slideNames.length;
+  $("btnStart").disabled = busy || !(slideNames.length || $("append").checked);
   $("btnPreview").disabled = busy || !slideNames.length;
   $("btnStart").textContent = busy ? "Загрузка файлов…" : "Собрать видео";
 }
@@ -253,7 +272,9 @@ $("btnPreview").onclick = async () => {
 
 $("btnStart").onclick = async () => {
   $("reviewBox").classList.add("hidden"); $("doneBox").classList.add("hidden");
-  await api("/api/start", {job, params: params(), review: $("review").checked});
+  const r = await api("/api/start", {job, params: params(), review: $("review").checked, append: $("append").checked});
+  if (!r.ok) { alert(r.error || "Не удалось начать сборку"); return; }
+  job = r.job;
   startPolling();
 };
 
@@ -263,7 +284,9 @@ $("btnContinue").onclick = async () => {
   startPolling();
 };
 
+let finished = false;
 function startPolling() {
+  finished = false;
   $("progressBox").classList.remove("hidden");
   $("btnStart").disabled = true;
   clearInterval(pollTimer);
@@ -282,6 +305,8 @@ async function poll() {
     $("statusText").className = "hint";
     return;
   }
+  if (finished) return;  // опросы могут пересечься — обрабатываем завершение один раз
+  finished = true;
   clearInterval(pollTimer); refreshButtons();
   if (st.state === "review") {
     $("statusText").textContent = "Текст распознан — проверьте его ниже.";
@@ -289,6 +314,9 @@ async function poll() {
   } else if (st.state === "done") {
     $("statusText").textContent = ""; outPath = st.output;
     $("outPath").textContent = st.output; $("doneBox").classList.remove("hidden");
+    // следующие страницы — уже в новое задание; галочка «продолжить» допишет их к этому видео
+    $("append").checked = false; onAppendChange();
+    await resetSlides(); await loadLast();
   } else if (st.state === "error") {
     $("statusText").textContent = "Ошибка — подробности в журнале выше."; $("statusText").className = "err";
   }
@@ -297,7 +325,7 @@ async function poll() {
 $("btnReveal").onclick = () => api("/api/reveal", {path: outPath});
 $("btnQuit").onclick = async () => { await api("/api/quit"); document.body.innerHTML = "<main><h1>Программа закрыта</h1><p class='sub'>Это окно можно закрыть.</p></main>"; };
 
-(async () => { await newJob(); await loadVoices(); refreshButtons(); })();
+(async () => { await newJob(); await loadVoices(); await loadLast(); refreshButtons(); })();
 </script>
 </body>
 </html>

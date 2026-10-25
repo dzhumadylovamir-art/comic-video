@@ -227,16 +227,15 @@ def main():
 
     # 1. OCR / сценарий
     script_path = os.path.join(a.work, "script.txt")
-    if os.path.exists(script_path):
-        texts = dict(read_script(script_path))
+    texts = dict(read_script(script_path)) if os.path.exists(script_path) else {}
+    if texts:
         print("Использую существующий %s (удалите его, чтобы распознать заново)" % script_path)
-    else:
-        items = []
-        for i, f in enumerate(files, 1):
-            print("OCR %d/%d %s" % (i, len(files), f))
-            items.append((f, ocr_image(os.path.join(a.images, f), a.order)))
-        write_script(script_path, items)
-        texts = dict(items)
+    todo = [f for f in files if f not in texts]  # распознаём только новые страницы
+    for i, f in enumerate(todo, 1):
+        print("OCR %d/%d %s" % (i, len(todo), f))
+        texts[f] = ocr_image(os.path.join(a.images, f), a.order)
+    if todo or not os.path.exists(script_path):
+        write_script(script_path, [(f, texts.get(f, "")) for f in files])
         print("Текст сохранён в", script_path)
     if a.ocr_only:
         print("Проверьте/поправьте script.txt и запустите снова без --ocr-only.")
